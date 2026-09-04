@@ -73,3 +73,20 @@ def test_chat_endpoint_persists_a_conversation(tmp_path, monkeypatch) -> None:
     assert response.status_code == 200
     assert response.json()["conversation_id"]
     assert response.json()["sources"][0]["page"] == 1
+
+
+def test_background_upload_returns_task_status(tmp_path, monkeypatch) -> None:
+    knowledge_base = KnowledgeBase(
+        Settings(
+            chroma_persist_directory=str(tmp_path / "chroma"), chunk_size=100, openai_api_key=""
+        )
+    )
+    monkeypatch.setattr(main, "get_knowledge_base", lambda: knowledge_base)
+    response = TestClient(main.app).post(
+        "/documents?background=true",
+        files={"file": ("policy.md", b"Remote work is supported.", "text/markdown")},
+    )
+    assert response.status_code == 202
+    task = TestClient(main.app).get(f"/documents/tasks/{response.json()['task_id']}")
+    assert task.status_code == 200
+    assert task.json()["status"] in {"queued", "processing", "completed"}

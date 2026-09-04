@@ -2,8 +2,9 @@ import logging
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
+from uuid import uuid4
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -30,6 +31,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type", "X-API-Key", "X-Request-ID", "X-User-ID"],
 )
+ingestion_tasks: dict[str, dict[str, int | str]] = {}
 
 
 @app.exception_handler(Exception)
@@ -92,6 +94,8 @@ def readiness() -> dict[str, str]:
 async def upload_document(
     file: Annotated[UploadFile, File()],
     _user_id: Annotated[str, Depends(require_user)],
+    background_tasks: BackgroundTasks,
+    background: bool = False,
 ) -> dict[str, int | str]:
     try:
         raw_content = await file.read(get_settings().max_upload_bytes + 1)
@@ -102,10 +106,39 @@ async def upload_document(
             get_settings().max_upload_bytes,
         )
         pages = extract_document_pages(filename, raw_content)
+        if background:
+            task_id = str(uuid4())
+            ingestion_tasks[task_id] = {"task_id": task_id, "status": "queued", "filename": filename}
+            background_tasks.add_task(_run_ingestion, task_id, filename, pages)
+            return JSONResponse(
+                status_code=202,
+                content={"task_id": task_id, "filename": filename, "status": "queued"},
+            )
         chunks = get_knowledge_base().add_document_pages(filename, pages)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     return {"filename": filename, "chunks_indexed": chunks}
+
+
+def _run_ingestion(task_id: str, filename: str, pages) -> None:
+    ingestion_tasks[task_id]["status"] = "processing"
+    try:
+        chunks = get_knowledge_base().add_document_pages(filename, pages)
+        ingestion_tasks[task_id].update(status="completed", chunks_indexed=chunks)
+    except Exception:
+        logging.getLogger(__name__).exception("background_ingestion_failed")
+        ingestion_tasks[task_id].update(status="failed", error="The document could not be indexed.")
+
+
+@app.get("/documents/tasks/{task_id}")
+def ingestion_status(
+    task_id: str,
+    _user_id: Annotated[str, Depends(require_user)],
+) -> dict[str, int | str]:
+    task = ingestion_tasks.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Ingestion task not found.")
+    return task
 
 
 @app.get("/documents", response_model=list[DocumentResponse])
