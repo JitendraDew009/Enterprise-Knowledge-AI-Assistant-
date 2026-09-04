@@ -1,16 +1,17 @@
+import logging
 import re
 from dataclasses import dataclass
 from typing import ClassVar
 
 from langchain_chroma import Chroma
 from langchain_core.embeddings import Embeddings
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from .config import Settings
 from .ingestion import DocumentPage, chunk_document, extract_document_pages
 from .providers.embeddings import DeterministicEmbeddings, build_embedding_provider
+from .providers.generation import build_grounded_prompt
 
 __all__ = ["DeterministicEmbeddings", "KnowledgeBase", "read_supported_document"]
 
@@ -85,7 +86,7 @@ class KnowledgeBase:
         matches = self.store.similarity_search_with_score(
             question, k=limit or self.settings.retrieval_k
         )
-        return [
+        sources = [
             RetrievedSource(
                 source=str(document.metadata.get("source", "unknown")),
                 excerpt=document.page_content,
@@ -94,6 +95,11 @@ class KnowledgeBase:
                 chunk=document.metadata.get("chunk"),
             )
             for document, score in matches
+        ]
+        return [
+            source
+            for source in sources
+            if source.score is not None and source.score >= self.settings.retrieval_score_threshold
         ]
 
     @staticmethod
@@ -124,29 +130,28 @@ class KnowledgeBase:
             return "I could not find relevant information in the uploaded documents.", []
 
         context = "\n\n".join(
-            f"[{source.source}]\n{source.excerpt}" for source in sources
+            f"[source={source.source} page={source.page or 'unknown'} chunk={source.chunk}]\n"
+            f"{source.excerpt}"
+            for source in sources
         )
         if not self.settings.openai_api_key:
             return self._extractive_answer(question, sources), sources
 
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                (
-                    "system",
-                    (
-                        "Answer only from the supplied context. If the context does not contain "
-                        "the answer, say so. Cite sources inline using [filename]."
-                    ),
-                ),
-                ("human", "Question: {question}\n\nContext:\n{context}"),
-            ]
-        )
-        response = (prompt | ChatOpenAI(
-            api_key=self.settings.openai_api_key,
-            model=self.settings.openai_chat_model,
-            temperature=0,
-        )).invoke({"question": question, "context": context})
-        return str(response.content), sources
+        try:
+            response = (
+                build_grounded_prompt()
+                | ChatOpenAI(
+                    api_key=self.settings.openai_api_key,
+                    model=self.settings.openai_chat_model,
+                    temperature=0,
+                    timeout=self.settings.llm_timeout_seconds,
+                    max_retries=self.settings.llm_max_retries,
+                )
+            ).invoke({"question": question, "context": context})
+            return str(response.content), sources
+        except Exception:
+            logging.getLogger(__name__).exception("grounded_generation_failed")
+            return self._extractive_answer(question, sources), sources
 
 
 def read_supported_document(filename: str, content: bytes) -> str:

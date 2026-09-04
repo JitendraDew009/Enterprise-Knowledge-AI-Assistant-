@@ -8,6 +8,13 @@ class Settings(BaseSettings):
     environment: str = "development"
     log_level: str = "INFO"
     max_upload_bytes: int = 10_000_000
+    retrieval_score_threshold: float = 0.25
+    llm_timeout_seconds: int = 30
+    llm_max_retries: int = 1
+    conversation_history_limit: int = 10
+    api_base_url: str = "http://127.0.0.1:8000"
+    application_api_key: str | None = None
+    cors_origins: str = "http://127.0.0.1:8000,http://localhost:8501"
     openai_api_key: str | None = None
     openai_chat_model: str = "gpt-4o-mini"
     openai_embedding_model: str = "text-embedding-3-small"

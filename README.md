@@ -58,11 +58,12 @@ flowchart LR
 | --- | --- |
 | Backend | Python, FastAPI, Uvicorn |
 | RAG orchestration | LangChain |
-| Vector store | Chroma |
+| Local vector store | Chroma |
+| Production vector schema | PostgreSQL + pgvector repository and Alembic migration |
 | Production embeddings and generation | OpenAI-compatible models |
 | Offline development mode | Deterministic local embeddings and extractive fallback |
 | Document processing | `pypdf`, LangChain text splitters |
-| Frontend | Semantic HTML, CSS, and browser JavaScript |
+| Frontend | Streamlit client plus lightweight browser client |
 | Quality | Pytest and Ruff |
 
 ## Quick Start
@@ -81,7 +82,7 @@ python -m pip install -e ".[dev]"
 Copy-Item .env.example .env
 ```
 
-Add `OPENAI_API_KEY` to `.env` to enable LLM-generated answers. Without a key, Atlas Knowledge remains usable in local development with deterministic embeddings and an extractive response fallback.
+Add `OPENAI_API_KEY` to `.env` to enable LLM-generated answers. Without a key, Atlas Knowledge remains usable in local development with deterministic embeddings and an extractive response fallback. Never commit `.env` or paste a key into `.env.example`.
 
 ### 3. Start the application
 
@@ -89,11 +90,18 @@ Add `OPENAI_API_KEY` to `.env` to enable LLM-generated answers. Without a key, A
 uvicorn app.main:app --reload
 ```
 
+To run the Streamlit client in a second terminal:
+
+```powershell
+streamlit run frontend/streamlit_app.py
+```
+
 Open:
 
 - Web app: http://127.0.0.1:8000/
 - Interactive API docs: http://127.0.0.1:8000/docs
 - Health check: http://127.0.0.1:8000/health
+- Streamlit client: http://localhost:8501/
 
 ## API Examples
 
@@ -134,6 +142,17 @@ curl.exe http://127.0.0.1:8000/documents
 curl.exe -X DELETE http://127.0.0.1:8000/documents/handbook.md
 ```
 
+### Continue a conversation
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8000/chat `
+  -H "Content-Type: application/json" `
+  -H "X-User-ID: demo-user" `
+  -d '{"question":"Summarize that policy."}'
+```
+
+The response contains a `conversation_id`. Send it in the next request to preserve bounded multi-turn context. Set `APPLICATION_API_KEY` and send it as `X-API-Key` when API authentication is enabled.
+
 ## Configuration
 
 Environment variables are loaded from `.env`:
@@ -144,6 +163,15 @@ Environment variables are loaded from `.env`:
 | `OPENAI_CHAT_MODEL` | `gpt-4o-mini` | Chat model name |
 | `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model name |
 | `CHROMA_PERSIST_DIRECTORY` | `./data/chroma` | Local vector-store directory |
+| `DATABASE_URL` | local PostgreSQL URL | SQLAlchemy and Alembic database URL |
+| `APPLICATION_API_KEY` | empty | Optional shared API credential |
+| `CORS_ORIGINS` | local app URLs | Comma-separated allowed browser origins |
+| `MAX_UPLOAD_BYTES` | `10000000` | Maximum upload size |
+| `RETRIEVAL_SCORE_THRESHOLD` | `0.25` | Minimum retrieval score |
+| `LLM_TIMEOUT_SECONDS` | `30` | LLM request timeout |
+| `LLM_MAX_RETRIES` | `1` | Maximum provider retries |
+| `CONVERSATION_HISTORY_LIMIT` | `10` | Recent messages included in chat context |
+| `API_BASE_URL` | `http://127.0.0.1:8000` | FastAPI URL used by Streamlit |
 | `RETRIEVAL_K` | `4` | Number of chunks retrieved per question |
 | `CHUNK_SIZE` | `900` | Maximum chunk size |
 | `CHUNK_OVERLAP` | `150` | Overlap between neighboring chunks |
@@ -155,6 +183,27 @@ Environment variables are loaded from `.env`:
 - **Inspectable answers:** every response includes source excerpts and retrieval scores instead of hiding the retrieval step.
 - **Small service boundary:** FastAPI keeps ingestion, retrieval, and UI integration easy to test and extend.
 - **Persistent local state:** Chroma preserves the local knowledge base between application restarts.
+- **Defense in depth:** optional API-key checks, safe filenames, upload limits, CORS controls, request IDs, and generic internal-error responses reduce common operational risks.
+
+## Project Structure
+
+```text
+app/
+├── core/             # Logging, request IDs, and authentication boundary
+├── db/               # SQLAlchemy models, sessions, and migrations metadata
+├── providers/        # Embedding and grounded-generation providers
+├── repositories/     # pgvector retrieval repository
+├── services/         # Conversation orchestration
+├── ingestion.py      # Validation, extraction, cleaning, and chunk metadata
+├── rag.py            # Active Chroma-backed RAG compatibility layer
+└── main.py           # FastAPI application and routes
+frontend/
+├── index.html        # Lightweight browser client
+└── streamlit_app.py  # Multi-turn Streamlit client
+evaluation/
+└── dataset.jsonl     # Small evaluation set template
+tests/                # Unit and integration-style tests
+```
 
 ## Testing
 
@@ -163,17 +212,49 @@ pytest
 ruff check .
 ```
 
-The test suite covers document decoding, unsupported file handling, deterministic embeddings, indexing and retrieval, unrelated-question refusal, and the upload/query/list/delete API workflow.
+The test suite covers document decoding, upload validation, page/chunk metadata, deterministic embeddings, indexing and retrieval, unrelated-question refusal, grounded prompt boundaries, conversation persistence, API authentication, and the upload/query/list/delete/chat workflows.
 
-## Current Scope and Roadmap
+## Evaluation Methodology
+
+The starter dataset is stored in `evaluation/dataset.jsonl` with a question, expected answer, and expected source. A useful evaluation run should:
+
+1. Load the sample enterprise documents into a clean knowledge base.
+2. Run every question through `/query` or `/chat`.
+3. Compare returned sources with `expected_source`.
+4. Review whether the answer is supported by the returned excerpts.
+5. Record retrieval relevance, source correctness, groundedness, and safe refusal for unknown questions.
+
+This repository does not claim an accuracy percentage because a complete benchmark has not been run.
+
+## Docker
+
+With Docker Desktop running, start the complete stack:
+
+```powershell
+docker compose up --build
+```
+
+This starts PostgreSQL with pgvector, the FastAPI service, and the Streamlit client. FastAPI applies Alembic migrations before serving traffic. Open http://localhost:8501 for the Streamlit client or http://localhost:8000/docs for the API.
+
+## Security Considerations
+
+- Secrets are read from environment variables and `.env` is ignored by Git.
+- Uploads validate filename shape, extension, MIME type, size, and extractable content.
+- Documents are treated as untrusted input in the grounded prompt.
+- Optional API-key enforcement and user identity boundaries are available.
+- Request logs record method, path, status, request ID, and latency, not document contents.
+
+The current identity header is an extension point for OAuth/JWT integration, not a complete identity provider. PostgreSQL, managed object storage, tenant isolation, and full role-based authorization are deployment work still required for sensitive enterprise data.
+
+## Limitations and Roadmap
 
 This repository is a focused, production-shaped MVP. The next steps for a larger enterprise deployment would be:
 
-- Page-aware PDF citations and document versioning.
-- Authentication, role-based access control, and tenant isolation.
-- Upload size limits, richer file formats, and background indexing jobs.
-- Managed vector storage and object storage.
-- Structured logging, metrics, tracing, rate limits, and evaluation datasets.
+- Connect the pgvector repository to the active ingestion and retrieval path.
+- Add document versioning and replace-on-reupload behavior.
+- Add richer file formats and background indexing jobs.
+- Complete OAuth/JWT authentication, tenant isolation, and role-based authorization.
+- Add managed object storage, metrics, tracing, rate limits, and automated evaluation runs.
 
 ## Author
 

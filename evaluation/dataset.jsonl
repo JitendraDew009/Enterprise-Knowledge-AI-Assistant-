@@ -1,0 +1,3 @@
+{"question":"How many remote-work days are allowed after probation?","expected_answer":"Employees may work remotely up to two days per week after completing probation, subject to manager approval.","expected_source":"employee_handbook.md"}
+{"question":"What is the incident escalation window?","expected_answer":"Critical incidents must be escalated to the on-call lead within 30 minutes.","expected_source":"engineering_sop.md"}
+{"question":"What is the maternity leave policy?","expected_answer":"The assistant should state that the information was not found when the uploaded documents do not contain this policy.","expected_source":null}

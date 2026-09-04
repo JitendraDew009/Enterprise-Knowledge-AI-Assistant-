@@ -22,7 +22,9 @@ def test_local_embeddings_are_deterministic() -> None:
 
 def test_documents_can_be_indexed_and_retrieved(tmp_path) -> None:
     knowledge_base = KnowledgeBase(
-        Settings(chroma_persist_directory=str(tmp_path / "chroma"), chunk_size=100)
+        Settings(
+            chroma_persist_directory=str(tmp_path / "chroma"), chunk_size=100, openai_api_key=""
+        )
     )
     assert knowledge_base.add_document("policy.md", "Remote work is supported three days per week.") == 1
     sources = knowledge_base.retrieve("How often is remote work supported?", limit=1)
@@ -32,7 +34,9 @@ def test_documents_can_be_indexed_and_retrieved(tmp_path) -> None:
 
 def test_unrelated_questions_are_not_answered_from_nearest_chunks(tmp_path) -> None:
     knowledge_base = KnowledgeBase(
-        Settings(chroma_persist_directory=str(tmp_path / "chroma"), chunk_size=100)
+        Settings(
+            chroma_persist_directory=str(tmp_path / "chroma"), chunk_size=100, openai_api_key=""
+        )
     )
     knowledge_base.add_document("roadmap.md", "Learn Python, Git, and FastAPI.")
     answer, sources = knowledge_base.answer("What is the maternity leave policy?")
@@ -42,7 +46,9 @@ def test_unrelated_questions_are_not_answered_from_nearest_chunks(tmp_path) -> N
 
 def test_local_answers_include_relevant_text(tmp_path) -> None:
     knowledge_base = KnowledgeBase(
-        Settings(chroma_persist_directory=str(tmp_path / "chroma"), chunk_size=100)
+        Settings(
+            chroma_persist_directory=str(tmp_path / "chroma"), chunk_size=100, openai_api_key=""
+        )
     )
     knowledge_base.add_document("roadmap.md", "AI engineer roles require Python and FastAPI.")
     answer, sources = knowledge_base.answer("What skills do AI engineer roles require?")

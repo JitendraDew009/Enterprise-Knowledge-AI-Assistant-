@@ -43,9 +43,11 @@ def upgrade() -> None:
     op.create_table(
         "conversations",
         sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("owner_id", sa.String(length=128), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
+    op.create_index("ix_conversations_owner_id", "conversations", ["owner_id"], unique=False)
     op.create_table(
         "messages",
         sa.Column("id", sa.String(length=36), nullable=False),
@@ -62,6 +64,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index("ix_messages_conversation_id", table_name="messages")
     op.drop_table("messages")
+    op.drop_index("ix_conversations_owner_id", table_name="conversations")
     op.drop_table("conversations")
     op.drop_index("ix_document_chunks_document_id", table_name="document_chunks")
     op.drop_table("document_chunks")

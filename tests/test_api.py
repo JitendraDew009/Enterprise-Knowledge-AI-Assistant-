@@ -1,13 +1,20 @@
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app import main
 from app.config import Settings
+from app.db.models import Base
+from app.db.session import get_db
 from app.rag import KnowledgeBase
 
 
 def test_document_workflow(tmp_path, monkeypatch) -> None:
     knowledge_base = KnowledgeBase(
-        Settings(chroma_persist_directory=str(tmp_path / "chroma"), chunk_size=100)
+        Settings(
+            chroma_persist_directory=str(tmp_path / "chroma"), chunk_size=100, openai_api_key=""
+        )
     )
     monkeypatch.setattr(main, "get_knowledge_base", lambda: knowledge_base)
     client = TestClient(main.app)
@@ -31,3 +38,38 @@ def test_document_workflow(tmp_path, monkeypatch) -> None:
     assert deleted.status_code == 204
     assert client.get("/documents").json() == []
     assert client.delete("/documents/policy.md").status_code == 404
+
+
+def test_chat_endpoint_persists_a_conversation(tmp_path, monkeypatch) -> None:
+    knowledge_base = KnowledgeBase(
+        Settings(
+            chroma_persist_directory=str(tmp_path / "chroma"), chunk_size=100, openai_api_key=""
+        )
+    )
+    knowledge_base.add_document("policy.md", "Remote work is supported three days per week.")
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine)
+
+    def override_db():
+        with session_factory() as session:
+            yield session
+
+    monkeypatch.setattr(main, "get_knowledge_base", lambda: knowledge_base)
+    main.app.dependency_overrides[get_db] = override_db
+    try:
+        response = TestClient(main.app).post(
+            "/chat",
+            headers={"X-User-ID": "user-1"},
+            json={"question": "How often is remote work supported?"},
+        )
+    finally:
+        main.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["conversation_id"]
+    assert response.json()["sources"][0]["page"] == 1
