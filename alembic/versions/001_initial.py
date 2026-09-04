@@ -23,11 +23,17 @@ def upgrade() -> None:
         "documents",
         sa.Column("id", sa.String(length=36), nullable=False),
         sa.Column("filename", sa.String(length=255), nullable=False),
+        sa.Column("content_type", sa.String(length=128), nullable=True),
+        sa.Column("size_bytes", sa.Integer(), nullable=True),
+        sa.Column("owner_id", sa.String(length=128), nullable=True),
         sa.Column("status", sa.String(length=32), nullable=False),
+        sa.Column("error_message", sa.Text(), nullable=True),
         sa.Column("uploaded_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_documents_filename", "documents", ["filename"], unique=False)
+    op.create_index("ix_documents_owner_id", "documents", ["owner_id"], unique=False)
     op.create_table(
         "document_chunks",
         sa.Column("id", sa.String(length=36), nullable=False),
@@ -36,6 +42,8 @@ def upgrade() -> None:
         sa.Column("page_number", sa.Integer(), nullable=True),
         sa.Column("content", sa.Text(), nullable=False),
         sa.Column("embedding", Vector(1536), nullable=True),
+        sa.Column("extra_metadata", sa.JSON(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["document_id"], ["documents.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -68,5 +76,6 @@ def downgrade() -> None:
     op.drop_table("conversations")
     op.drop_index("ix_document_chunks_document_id", table_name="document_chunks")
     op.drop_table("document_chunks")
+    op.drop_index("ix_documents_owner_id", table_name="documents")
     op.drop_index("ix_documents_filename", table_name="documents")
     op.drop_table("documents")

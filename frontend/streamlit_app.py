@@ -68,6 +68,8 @@ def main() -> None:
             readiness = api_request("GET", "/health/ready")
             if readiness.is_success and readiness.json().get("status") == "ok":
                 st.success("System ready")
+            elif readiness.status_code == 503:
+                st.warning("System degraded: database unavailable")
             else:
                 st.warning("System degraded")
         except httpx.HTTPError:

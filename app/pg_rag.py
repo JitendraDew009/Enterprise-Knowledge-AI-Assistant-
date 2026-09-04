@@ -13,7 +13,9 @@ from .repositories.vector import PgVectorRepository
 class PgKnowledgeBase(KnowledgeBase):
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.embeddings: Embeddings = build_embedding_provider(settings, size=1536)
+        self.embeddings: Embeddings = build_embedding_provider(
+            settings, size=settings.embedding_dimensions
+        )
         self.repository = PgVectorRepository()
         overlap = min(settings.chunk_overlap, max(settings.chunk_size - 1, 0))
         self.splitter = RecursiveCharacterTextSplitter(

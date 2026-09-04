@@ -4,6 +4,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app import main
+from app.api import deps
 from app.config import Settings
 from app.db.models import Base
 from app.db.session import get_db
@@ -16,7 +17,7 @@ def test_document_workflow(tmp_path, monkeypatch) -> None:
             chroma_persist_directory=str(tmp_path / "chroma"), chunk_size=100, openai_api_key=""
         )
     )
-    monkeypatch.setattr(main, "get_knowledge_base", lambda: knowledge_base)
+    monkeypatch.setattr(deps, "get_knowledge_base", lambda: knowledge_base)
     client = TestClient(main.app)
 
     upload = client.post(
@@ -59,7 +60,7 @@ def test_chat_endpoint_persists_a_conversation(tmp_path, monkeypatch) -> None:
         with session_factory() as session:
             yield session
 
-    monkeypatch.setattr(main, "get_knowledge_base", lambda: knowledge_base)
+    monkeypatch.setattr(deps, "get_knowledge_base", lambda: knowledge_base)
     main.app.dependency_overrides[get_db] = override_db
     try:
         response = TestClient(main.app).post(
@@ -81,7 +82,7 @@ def test_background_upload_returns_task_status(tmp_path, monkeypatch) -> None:
             chroma_persist_directory=str(tmp_path / "chroma"), chunk_size=100, openai_api_key=""
         )
     )
-    monkeypatch.setattr(main, "get_knowledge_base", lambda: knowledge_base)
+    monkeypatch.setattr(deps, "get_knowledge_base", lambda: knowledge_base)
     response = TestClient(main.app).post(
         "/documents?background=true",
         files={"file": ("policy.md", b"Remote work is supported.", "text/markdown")},

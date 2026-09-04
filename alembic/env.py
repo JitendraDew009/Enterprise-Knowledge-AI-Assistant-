@@ -4,14 +4,15 @@ from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 from app.config import get_settings
-from app.db import models
+from app.db import models  # noqa: F401 — register models with metadata
+from app.db.session import Base
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-target_metadata = models.Base.metadata
+target_metadata = Base.metadata
 
 
 def compare_type(context, inspected_column, metadata_column, inspected_type, metadata_type):

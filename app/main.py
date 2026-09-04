@@ -1,173 +1,49 @@
 import logging
-from functools import lru_cache
 from pathlib import Path
-from typing import Annotated
-from uuid import uuid4
 
-from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 
+from .api.deps import get_knowledge_base, ingestion_tasks
+from .api.routes import chat, documents, health, query
 from .config import get_settings
 from .core.logging import RequestLoggingMiddleware, configure_logging
-from .core.security import require_user
-from .db.session import check_database, get_db
-from .ingestion import extract_document_pages, validate_upload
-from .pg_rag import PgKnowledgeBase
-from .rag import DocumentSummary, KnowledgeBase
-from .schemas.chat import ChatRequest, ChatResponse
-from .services.chat import ConversationNotFoundError, ConversationService
 
-configure_logging()
-app = FastAPI(title="Enterprise Knowledge AI Assistant", version="0.1.0")
-app.add_middleware(RequestLoggingMiddleware)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[origin.strip() for origin in get_settings().cors_origins.split(",") if origin.strip()],
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Request-ID", "X-User-ID"],
-)
-ingestion_tasks: dict[str, dict[str, int | str]] = {}
+__all__ = ["app", "create_app", "get_knowledge_base", "ingestion_tasks"]
 
 
-@app.exception_handler(Exception)
-async def unhandled_exception(request: Request, error: Exception) -> JSONResponse:
-    logging.getLogger(__name__).exception("unhandled_request_error", extra={"path": request.url.path})
-    return JSONResponse(status_code=500, content={"detail": "An internal server error occurred."})
+def create_app() -> FastAPI:
+    configure_logging()
+    application = FastAPI(title="Enterprise Knowledge AI Assistant", version="0.1.0")
+    application.add_middleware(RequestLoggingMiddleware)
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            origin.strip() for origin in get_settings().cors_origins.split(",") if origin.strip()
+        ],
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "DELETE"],
+        allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Request-ID", "X-User-ID"],
+    )
 
-
-@lru_cache
-def get_knowledge_base() -> KnowledgeBase:
-    settings = get_settings()
-    if settings.vector_backend.lower() == "pgvector":
-        return PgKnowledgeBase(settings)
-    return KnowledgeBase(settings)
-
-
-class QueryRequest(BaseModel):
-    question: str = Field(min_length=3, max_length=2000)
-
-
-class SourceResponse(BaseModel):
-    source: str
-    excerpt: str
-    score: float | None
-    page: int | None = None
-    chunk: int | None = None
-
-
-class QueryResponse(BaseModel):
-    answer: str
-    sources: list[SourceResponse]
-
-
-class DocumentResponse(BaseModel):
-    filename: str
-    chunks: int
-
-
-@app.get("/", include_in_schema=False)
-def frontend() -> FileResponse:
-    return FileResponse(Path(__file__).parent.parent / "frontend" / "index.html")
-
-
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
-
-
-@app.get("/health/ready")
-def readiness() -> dict[str, str]:
-    database_status = "ok" if check_database() else "unavailable"
-    overall_status = "ok" if database_status == "ok" else "degraded"
-    payload = {"status": overall_status, "database": database_status}
-    if overall_status != "ok":
-        return JSONResponse(status_code=503, content=payload)
-    return payload
-
-
-@app.post("/documents")
-async def upload_document(
-    file: Annotated[UploadFile, File()],
-    _user_id: Annotated[str, Depends(require_user)],
-    background_tasks: BackgroundTasks,
-    background: bool = False,
-) -> dict[str, int | str]:
-    try:
-        raw_content = await file.read(get_settings().max_upload_bytes + 1)
-        filename = validate_upload(
-            file.filename or "",
-            len(raw_content),
-            file.content_type,
-            get_settings().max_upload_bytes,
+    @application.exception_handler(Exception)
+    async def unhandled_exception(request: Request, error: Exception) -> JSONResponse:
+        logging.getLogger(__name__).exception(
+            "unhandled_request_error", extra={"path": request.url.path}
         )
-        pages = extract_document_pages(filename, raw_content)
-        if background:
-            task_id = str(uuid4())
-            ingestion_tasks[task_id] = {"task_id": task_id, "status": "queued", "filename": filename}
-            background_tasks.add_task(_run_ingestion, task_id, filename, pages)
-            return JSONResponse(
-                status_code=202,
-                content={"task_id": task_id, "filename": filename, "status": "queued"},
-            )
-        chunks = get_knowledge_base().add_document_pages(filename, pages)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-    return {"filename": filename, "chunks_indexed": chunks}
+        return JSONResponse(status_code=500, content={"detail": "An internal server error occurred."})
+
+    @application.get("/", include_in_schema=False)
+    def frontend() -> FileResponse:
+        return FileResponse(Path(__file__).parent.parent / "frontend" / "index.html")
+
+    application.include_router(health.router)
+    application.include_router(documents.router)
+    application.include_router(query.router)
+    application.include_router(chat.router)
+    return application
 
 
-def _run_ingestion(task_id: str, filename: str, pages) -> None:
-    ingestion_tasks[task_id]["status"] = "processing"
-    try:
-        chunks = get_knowledge_base().add_document_pages(filename, pages)
-        ingestion_tasks[task_id].update(status="completed", chunks_indexed=chunks)
-    except Exception:
-        logging.getLogger(__name__).exception("background_ingestion_failed")
-        ingestion_tasks[task_id].update(status="failed", error="The document could not be indexed.")
-
-
-@app.get("/documents/tasks/{task_id}")
-def ingestion_status(
-    task_id: str,
-    _user_id: Annotated[str, Depends(require_user)],
-) -> dict[str, int | str]:
-    task = ingestion_tasks.get(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Ingestion task not found.")
-    return task
-
-
-@app.get("/documents", response_model=list[DocumentResponse])
-def list_documents(_user_id: Annotated[str, Depends(require_user)]) -> list[DocumentSummary]:
-    return get_knowledge_base().list_documents()
-
-
-@app.delete("/documents/{filename:path}", status_code=204)
-def delete_document(filename: str, _user_id: Annotated[str, Depends(require_user)]) -> None:
-    if not get_knowledge_base().delete_document(filename):
-        raise HTTPException(status_code=404, detail="Document not found.")
-
-
-@app.post("/query", response_model=QueryResponse)
-def query_knowledge_base(
-    request: QueryRequest,
-    _user_id: Annotated[str, Depends(require_user)],
-) -> QueryResponse:
-    answer, sources = get_knowledge_base().answer(request.question)
-    return QueryResponse(answer=answer, sources=[SourceResponse(**source.__dict__) for source in sources])
-
-
-@app.post("/chat", response_model=ChatResponse)
-def chat(
-    request: ChatRequest,
-    session: Annotated[Session, Depends(get_db)],
-    user_id: Annotated[str, Depends(require_user)],
-) -> ChatResponse:
-    try:
-        return ConversationService(get_settings(), get_knowledge_base(), session).chat(request, user_id)
-    except ConversationNotFoundError as error:
-        raise HTTPException(status_code=404, detail="Conversation not found.") from error
+app = create_app()
