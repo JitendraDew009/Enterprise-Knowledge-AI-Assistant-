@@ -1,7 +1,9 @@
 import hashlib
+import re
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
+from typing import ClassVar
 
 from langchain_chroma import Chroma
 from langchain_core.embeddings import Embeddings
@@ -47,6 +49,11 @@ class DeterministicEmbeddings(Embeddings):
 
 
 class KnowledgeBase:
+    _STOP_WORDS: ClassVar[set[str]] = {
+        "a", "an", "and", "are", "can", "do", "for", "how", "i", "in", "is",
+        "it", "of", "on", "or", "our", "the", "their", "this", "to", "what", "with",
+    }
+
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.embeddings = self._build_embeddings()
@@ -109,20 +116,38 @@ class KnowledgeBase:
             for document, score in matches
         ]
 
+    @staticmethod
+    def _has_shared_terms(question: str, sources: list[RetrievedSource]) -> bool:
+        question_terms = set(re.findall(r"[a-z0-9]+", question.lower())) - KnowledgeBase._STOP_WORDS
+        document_terms = set(
+            re.findall(r"[a-z0-9]+", " ".join(source.excerpt for source in sources).lower())
+        ) - KnowledgeBase._STOP_WORDS
+        return bool(question_terms & document_terms)
+
+    @staticmethod
+    def _extractive_answer(question: str, sources: list[RetrievedSource]) -> str:
+        question_terms = set(re.findall(r"[a-z0-9]+", question.lower())) - KnowledgeBase._STOP_WORDS
+        candidates = re.split(r"(?<=[.!?])\s+", " ".join(source.excerpt for source in sources))
+        ranked = sorted(
+            candidates,
+            key=lambda sentence: len(
+                question_terms & set(re.findall(r"[a-z0-9]+", sentence.lower()))
+            ),
+            reverse=True,
+        )
+        answer = " ".join(sentence.strip() for sentence in ranked[:2] if sentence.strip())
+        return answer[:600].rstrip() + ("..." if len(answer) > 600 else "")
+
     def answer(self, question: str) -> tuple[str, list[RetrievedSource]]:
         sources = self.retrieve(question)
-        if not sources:
+        if not sources or not self._has_shared_terms(question, sources):
             return "I could not find relevant information in the uploaded documents.", []
 
         context = "\n\n".join(
             f"[{source.source}]\n{source.excerpt}" for source in sources
         )
         if not self.settings.openai_api_key:
-            return (
-                "I found these relevant passages:\n\n"
-                + "\n\n".join(f"- {source.excerpt}" for source in sources),
-                sources,
-            )
+            return self._extractive_answer(question, sources), sources
 
         prompt = ChatPromptTemplate.from_messages(
             [

@@ -28,3 +28,23 @@ def test_documents_can_be_indexed_and_retrieved(tmp_path) -> None:
     sources = knowledge_base.retrieve("How often is remote work supported?", limit=1)
     assert len(sources) == 1
     assert sources[0].source == "policy.md"
+
+
+def test_unrelated_questions_are_not_answered_from_nearest_chunks(tmp_path) -> None:
+    knowledge_base = KnowledgeBase(
+        Settings(chroma_persist_directory=str(tmp_path / "chroma"), chunk_size=100)
+    )
+    knowledge_base.add_document("roadmap.md", "Learn Python, Git, and FastAPI.")
+    answer, sources = knowledge_base.answer("What is the maternity leave policy?")
+    assert answer == "I could not find relevant information in the uploaded documents."
+    assert sources == []
+
+
+def test_local_answers_include_relevant_text(tmp_path) -> None:
+    knowledge_base = KnowledgeBase(
+        Settings(chroma_persist_directory=str(tmp_path / "chroma"), chunk_size=100)
+    )
+    knowledge_base.add_document("roadmap.md", "AI engineer roles require Python and FastAPI.")
+    answer, sources = knowledge_base.answer("What skills do AI engineer roles require?")
+    assert "AI engineer roles require Python and FastAPI." in answer
+    assert sources[0].source == "roadmap.md"

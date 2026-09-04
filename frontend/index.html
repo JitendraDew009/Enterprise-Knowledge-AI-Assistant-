@@ -3,51 +3,73 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Knowledge Desk</title>
+  <title>Atlas Knowledge</title>
   <style>
-    :root { --ink: #17211f; --muted: #66736f; --paper: #f5f2e9; --panel: #fffdf7; --line: #d9ddd5; --accent: #d65f3a; --accent-dark: #9f3e27; --sage: #dce8d9; }
+    :root { --ink: #202124; --muted: #70757a; --paper: #fafafa; --panel: #fff; --line: #e4e6e8; --accent: #f2a900; --accent-soft: #fff4ce; --danger: #b3261e; }
     * { box-sizing: border-box; }
-    body { margin: 0; color: var(--ink); background: radial-gradient(circle at 80% 0%, #e8efe0 0, transparent 34%), var(--paper); font: 16px/1.5 Georgia, serif; }
+    body { margin: 0; color: var(--ink); background: var(--paper); font: 15px/1.5 "Trebuchet MS", Verdana, sans-serif; }
     button, input { font: inherit; }
-    .shell { width: min(1180px, calc(100% - 40px)); margin: 0 auto; }
-    header { display: flex; justify-content: space-between; align-items: end; padding: 42px 0 34px; border-bottom: 1px solid var(--line); }
-    .eyebrow { margin: 0 0 8px; color: var(--accent-dark); font: 700 12px/1.2 Arial, sans-serif; letter-spacing: 1.6px; text-transform: uppercase; }
-    h1, h2, p { margin-top: 0; } h1 { max-width: 650px; margin-bottom: 0; font-size: clamp(2.4rem, 6vw, 5.4rem); line-height: .95; font-weight: 400; letter-spacing: 0; }
-    .signal { color: var(--muted); font: 14px Arial, sans-serif; }
-    main { display: grid; grid-template-columns: 300px 1fr; gap: 64px; padding: 44px 0 70px; }
-    aside { border-right: 1px solid var(--line); padding-right: 28px; } h2 { font-size: 1.35rem; font-weight: 400; }
-    .upload { display: block; padding: 16px; border: 1px dashed #a9b5aa; background: var(--sage); cursor: pointer; font: 700 14px Arial, sans-serif; }
+    .shell { min-height: 100vh; }
+    header { display: flex; align-items: center; gap: 24px; height: 72px; padding: 0 28px; border-bottom: 1px solid var(--line); background: var(--panel); }
+    .brand { display: flex; align-items: center; gap: 11px; min-width: 190px; }
+    .brand-mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; color: #5c4300; background: var(--accent-soft); font-weight: 700; }
+    .brand-name { font-size: 18px; font-weight: 700; letter-spacing: 0; }
+    .topline { color: var(--muted); font-size: 13px; }
+    main { display: grid; grid-template-columns: 260px minmax(0, 760px); gap: 52px; width: min(1100px, calc(100% - 56px)); margin: 0 auto; padding: 42px 0 24px; }
+    aside { padding-top: 7px; }
+    .section-label { margin: 0 0 14px; color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: .9px; text-transform: uppercase; }
+    .upload { display: block; padding: 13px 15px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); cursor: pointer; font-weight: 700; transition: border-color .2s, box-shadow .2s; }
+    .upload:hover { border-color: var(--accent); box-shadow: 0 2px 8px #20212412; }
     .upload input { display: none; }
-    .status { min-height: 22px; margin: 12px 0 24px; color: var(--muted); font: 13px Arial, sans-serif; }
-    .documents { display: grid; gap: 10px; padding: 0; list-style: none; }
-    .document { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); font: 14px Arial, sans-serif; }
-    .document span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .document small { color: var(--muted); white-space: nowrap; }
-    .delete { border: 0; padding: 2px 5px; color: var(--accent-dark); background: transparent; cursor: pointer; }
-    .hero-copy { max-width: 760px; margin-bottom: 35px; } .hero-copy p { max-width: 580px; color: var(--muted); font-size: 1.15rem; }
-    .ask { display: flex; gap: 12px; margin-bottom: 34px; } .ask input { flex: 1; min-width: 0; padding: 17px 18px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); outline: none; } .ask input:focus { border-color: var(--accent); }
-    .ask button { padding: 0 25px; border: 0; color: white; background: var(--accent); cursor: pointer; font: 700 14px Arial, sans-serif; } .ask button:hover { background: var(--accent-dark); } button:disabled { opacity: .55; cursor: wait; }
-    .answer { display: none; padding: 27px 30px; border-left: 4px solid var(--accent); background: var(--panel); } .answer.visible { display: block; } .answer h2 { margin-bottom: 12px; }
-    .answer-text { white-space: pre-wrap; font-size: 1.08rem; }
-    .sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 24px; } .source { padding: 14px; background: #edf1e9; font: 13px/1.4 Arial, sans-serif; } .source strong { display: block; margin-bottom: 6px; color: var(--accent-dark); }
-    @media (max-width: 760px) { .shell { width: min(100% - 28px, 620px); } header { align-items: start; flex-direction: column; gap: 18px; } main { display: block; padding-top: 28px; } aside { border-right: 0; border-bottom: 1px solid var(--line); padding: 0 0 28px; margin-bottom: 35px; } .ask { flex-direction: column; } .ask button { min-height: 52px; } }
+    .status { min-height: 21px; margin: 12px 0 22px; color: var(--muted); font-size: 12px; }
+    .documents { display: grid; gap: 3px; padding: 0; list-style: none; }
+    .document { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 7px; padding: 9px 8px; border-radius: 6px; font-size: 13px; }
+    .document:hover { background: #f0f1f2; }
+    .document span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .document small { color: var(--muted); white-space: nowrap; font-size: 11px; }
+    .delete { border: 0; padding: 1px 4px; color: var(--muted); background: transparent; cursor: pointer; font-size: 18px; line-height: 1; }
+    .delete:hover { color: var(--danger); }
+    .workspace { min-width: 0; }
+    .hero-copy { margin-bottom: 24px; }
+    h1, h2, p { margin-top: 0; } h1 { margin-bottom: 5px; font-family: Georgia, serif; font-size: clamp(2rem, 4vw, 3.4rem); font-weight: 400; letter-spacing: 0; line-height: 1.08; }
+    .hero-copy p:last-child { max-width: 570px; margin-bottom: 0; color: var(--muted); }
+    .ask { display: flex; gap: 10px; margin-bottom: 24px; }
+    .ask input { min-width: 0; flex: 1; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--panel); outline: none; box-shadow: 0 1px 2px #2021240a; }
+    .ask input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px #f2a9002b; }
+    .ask button { padding: 0 20px; border: 0; border-radius: 8px; color: #3b2b00; background: var(--accent); cursor: pointer; font-weight: 700; }
+    .ask button:hover { background: #e49e00; } button:disabled { opacity: .55; cursor: wait; }
+    .answer { display: none; padding: 24px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: 0 2px 8px #2021240a; }
+    .answer.visible { display: block; }
+    .answer h2 { margin-bottom: 12px; font-size: 14px; font-weight: 700; }
+    .answer-text { white-space: pre-wrap; font-family: Georgia, serif; font-size: 18px; line-height: 1.55; }
+    .sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 25px; }
+    .source { min-width: 0; padding: 14px; border: 1px solid #eee3bd; border-radius: 8px; background: #fffdf2; font-size: 12px; }
+    .source strong { display: block; margin-bottom: 6px; color: #765600; font-size: 12px; }
+    .source span { display: block; max-height: 8em; overflow: hidden; color: #4b4d4f; }
+    .source.expanded span { max-height: none; }
+    .read-more { margin-top: 10px; padding: 0; border: 0; color: #765600; background: transparent; cursor: pointer; font-size: 12px; font-weight: 700; }
+    .read-more:hover { text-decoration: underline; }
+    footer { width: min(1100px, calc(100% - 56px)); margin: 0 auto; padding: 24px 0 30px; color: var(--muted); border-top: 1px solid var(--line); font-size: 12px; }
+    @media (max-width: 760px) { header { height: 64px; padding: 0 16px; } .brand { min-width: 0; } .topline { display: none; } main { display: block; width: min(100% - 32px, 620px); padding-top: 28px; } aside { padding-bottom: 24px; margin-bottom: 28px; border-bottom: 1px solid var(--line); } .ask { flex-direction: column; } .ask button { min-height: 48px; } footer { width: min(100% - 32px, 620px); } }
   </style>
 </head>
 <body>
   <div class="shell">
-    <header><div><p class="eyebrow">Internal knowledge desk</p><h1>Ask the documents.</h1></div><div class="signal">Grounded answers · local retrieval</div></header>
+    <header><div class="brand"><span class="brand-mark">A</span><span class="brand-name">Atlas Knowledge</span></div><div class="topline">Your focused workspace for trusted answers</div></header>
     <main>
       <aside>
-        <h2>Document shelf</h2>
+        <p class="section-label">Your documents</p>
         <label class="upload">+ Add documents<input id="file-input" type="file" accept=".txt,.md,.pdf" multiple></label>
         <div id="status" class="status" role="status"></div>
         <ul id="documents" class="documents"></ul>
       </aside>
-      <section>
-        <div class="hero-copy"><p class="eyebrow">Search your workspace</p><p>Ask a question in plain language. Each response is assembled from the most relevant passages in your uploaded files.</p></div>
-        <form id="ask-form" class="ask"><input id="question" required minlength="3" maxlength="2000" placeholder="What do I need to know?" autocomplete="off"><button id="ask-button" type="submit">Ask assistant</button></form>
+      <section class="workspace">
+        <div class="hero-copy"><h1>What would you like to know?</h1><p>Ask in plain language and get an answer grounded in your documents.</p></div>
+        <form id="ask-form" class="ask"><input id="question" required minlength="3" maxlength="2000" placeholder="Ask a question..." autocomplete="off"><button id="ask-button" type="submit">Ask</button></form>
         <article id="answer" class="answer"><h2>Answer</h2><div id="answer-text" class="answer-text"></div><div id="sources" class="sources"></div></article>
       </section>
     </main>
+    <footer>Developed by Jitendra Dewangan</footer>
   </div>
   <script>
     const status = document.querySelector('#status');
@@ -86,7 +108,7 @@
       try {
         const response = await fetch('/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: document.querySelector('#question').value }) });
         const data = await response.json(); if (!response.ok) throw new Error(data.detail || 'Question failed.');
-        answerText.textContent = data.answer; sources.replaceChildren(...data.sources.map(source => { const card = document.createElement('div'); card.className = 'source'; card.innerHTML = `<strong></strong><span></span>`; card.querySelector('strong').textContent = `${source.source} · ${source.score ?? 'n/a'}`; card.querySelector('span').textContent = source.excerpt; return card; })); answer.classList.add('visible');
+        answerText.textContent = data.answer; sources.replaceChildren(...data.sources.map(source => { const card = document.createElement('div'); card.className = 'source'; const title = document.createElement('strong'); title.textContent = `${source.source} · ${source.score ?? 'n/a'}`; const excerpt = document.createElement('span'); excerpt.textContent = source.excerpt; const toggle = document.createElement('button'); toggle.className = 'read-more'; toggle.type = 'button'; toggle.textContent = 'Read more'; toggle.onclick = () => { const expanded = card.classList.toggle('expanded'); toggle.textContent = expanded ? 'Show less' : 'Read more'; }; card.append(title, excerpt, toggle); return card; })); answer.classList.add('visible');
       } catch (error) { setStatus(error.message, true); } finally { button.disabled = false; button.textContent = 'Ask assistant'; }
     };
     loadDocuments().catch(error => setStatus(error.message, true));
