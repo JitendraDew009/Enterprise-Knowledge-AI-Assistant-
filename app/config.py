@@ -4,6 +4,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    database_url: str = "postgresql+psycopg://atlas:atlas@localhost:5432/atlas_knowledge"
+    environment: str = "development"
+    log_level: str = "INFO"
+    max_upload_bytes: int = 10_000_000
     openai_api_key: str | None = None
     openai_chat_model: str = "gpt-4o-mini"
     openai_embedding_model: str = "text-embedding-3-small"

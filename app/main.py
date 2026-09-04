@@ -7,9 +7,14 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from .config import get_settings
-from .rag import DocumentSummary, KnowledgeBase, read_supported_document
+from .core.logging import RequestLoggingMiddleware, configure_logging
+from .db.session import check_database
+from .ingestion import extract_document_pages, validate_upload
+from .rag import DocumentSummary, KnowledgeBase
 
+configure_logging()
 app = FastAPI(title="Enterprise Knowledge AI Assistant", version="0.1.0")
+app.add_middleware(RequestLoggingMiddleware)
 
 
 @lru_cache
@@ -25,6 +30,8 @@ class SourceResponse(BaseModel):
     source: str
     excerpt: str
     score: float | None
+    page: int | None = None
+    chunk: int | None = None
 
 
 class QueryResponse(BaseModel):
@@ -47,16 +54,28 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/health/ready")
+def readiness() -> dict[str, str]:
+    database_status = "ok" if check_database() else "unavailable"
+    overall_status = "ok" if database_status == "ok" else "degraded"
+    return {"status": overall_status, "database": database_status}
+
+
 @app.post("/documents")
 async def upload_document(file: Annotated[UploadFile, File()]) -> dict[str, int | str]:
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="A filename is required.")
     try:
-        content = read_supported_document(file.filename, await file.read())
-        chunks = get_knowledge_base().add_document(file.filename, content)
-    except (UnicodeDecodeError, ValueError) as error:
+        raw_content = await file.read()
+        filename = validate_upload(
+            file.filename or "",
+            len(raw_content),
+            file.content_type,
+            get_settings().max_upload_bytes,
+        )
+        pages = extract_document_pages(filename, raw_content)
+        chunks = get_knowledge_base().add_document_pages(filename, pages)
+    except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
-    return {"filename": file.filename, "chunks_indexed": chunks}
+    return {"filename": filename, "chunks_indexed": chunks}
 
 
 @app.get("/documents", response_model=list[DocumentResponse])

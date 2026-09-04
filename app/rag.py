@@ -1,17 +1,18 @@
-import hashlib
 import re
 from dataclasses import dataclass
-from io import BytesIO
-from pathlib import Path
 from typing import ClassVar
 
 from langchain_chroma import Chroma
 from langchain_core.embeddings import Embeddings
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_openai import ChatOpenAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from .config import Settings
+from .ingestion import DocumentPage, chunk_document, extract_document_pages
+from .providers.embeddings import DeterministicEmbeddings, build_embedding_provider
+
+__all__ = ["DeterministicEmbeddings", "KnowledgeBase", "read_supported_document"]
 
 
 @dataclass
@@ -19,33 +20,14 @@ class RetrievedSource:
     source: str
     excerpt: str
     score: float | None
+    page: int | None = None
+    chunk: int | None = None
 
 
 @dataclass
 class DocumentSummary:
     filename: str
     chunks: int
-
-
-class DeterministicEmbeddings(Embeddings):
-    def __init__(self, size: int = 384) -> None:
-        self.size = size
-
-    def _embed(self, text: str) -> list[float]:
-        vector = [0.0] * self.size
-        for token in text.lower().split():
-            digest = hashlib.blake2b(token.encode("utf-8"), digest_size=8).digest()
-            index = int.from_bytes(digest[:4], "big") % self.size
-            sign = 1.0 if digest[4] & 1 else -1.0
-            vector[index] += sign
-        magnitude = sum(value * value for value in vector) ** 0.5
-        return [value / magnitude for value in vector] if magnitude else vector
-
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        return [self._embed(text) for text in texts]
-
-    def embed_query(self, text: str) -> list[float]:
-        return self._embed(text)
 
 
 class KnowledgeBase:
@@ -69,17 +51,13 @@ class KnowledgeBase:
         )
 
     def _build_embeddings(self) -> Embeddings:
-        if self.settings.openai_api_key:
-            return OpenAIEmbeddings(
-                api_key=self.settings.openai_api_key,
-                model=self.settings.openai_embedding_model,
-            )
-        return DeterministicEmbeddings()
+        return build_embedding_provider(self.settings)
 
     def add_document(self, filename: str, content: str) -> int:
-        chunks = self.splitter.create_documents(
-            [content], metadatas=[{"source": filename}]
-        )
+        return self.add_document_pages(filename, [DocumentPage(1, content)])
+
+    def add_document_pages(self, filename: str, pages: list[DocumentPage]) -> int:
+        chunks = chunk_document(filename, pages, self.splitter)
         if not chunks:
             return 0
         self.store.add_documents(chunks)
@@ -112,6 +90,8 @@ class KnowledgeBase:
                 source=str(document.metadata.get("source", "unknown")),
                 excerpt=document.page_content,
                 score=round(1 / (1 + float(score)), 4),
+                page=document.metadata.get("page"),
+                chunk=document.metadata.get("chunk"),
             )
             for document, score in matches
         ]
@@ -170,11 +150,4 @@ class KnowledgeBase:
 
 
 def read_supported_document(filename: str, content: bytes) -> str:
-    suffix = Path(filename).suffix.lower()
-    if suffix in {".txt", ".md"}:
-        return content.decode("utf-8")
-    if suffix == ".pdf":
-        from pypdf import PdfReader
-
-        return "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(content)).pages)
-    raise ValueError("Unsupported file type. Upload a .txt, .md, or .pdf file.")
+    return "\n\n".join(page.text for page in extract_document_pages(filename, content))
