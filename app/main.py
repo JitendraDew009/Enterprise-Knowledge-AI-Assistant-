@@ -29,7 +29,7 @@ app.add_middleware(
     allow_origins=[origin.strip() for origin in get_settings().cors_origins.split(",") if origin.strip()],
     allow_credentials=False,
     allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Content-Type", "X-API-Key", "X-Request-ID", "X-User-ID"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Request-ID", "X-User-ID"],
 )
 ingestion_tasks: dict[str, dict[str, int | str]] = {}
 
