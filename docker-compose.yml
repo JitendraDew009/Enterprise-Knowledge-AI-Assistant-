@@ -23,6 +23,7 @@ services:
       ENVIRONMENT: production
       LOG_LEVEL: INFO
       API_BASE_URL: http://api:8000
+      VECTOR_BACKEND: pgvector
       CHROMA_PERSIST_DIRECTORY: /app/data/chroma
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o-mini}

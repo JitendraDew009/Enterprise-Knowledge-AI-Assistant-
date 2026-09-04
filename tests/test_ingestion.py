@@ -1,5 +1,7 @@
 import pytest
+from docx import Document as WordDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from openpyxl import Workbook
 
 from app.ingestion import (
     DocumentPage,
@@ -37,3 +39,26 @@ def test_chunks_preserve_page_and_chunk_metadata() -> None:
     )
     assert {chunk.metadata["page"] for chunk in chunks} == {2, 4}
     assert [chunk.metadata["chunk"] for chunk in chunks] == list(range(len(chunks)))
+
+
+def test_docx_text_is_extracted(tmp_path) -> None:
+    document = WordDocument()
+    document.add_paragraph("Remote work policy")
+    path = tmp_path / "policy.docx"
+    document.save(path)
+    pages = extract_document_pages(path.name, path.read_bytes())
+    assert pages[0].page_number == 1
+    assert pages[0].text == "Remote work policy"
+
+
+def test_xlsx_values_are_extracted_with_sheet_metadata(tmp_path) -> None:
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Policies"
+    worksheet.append(["Policy", "Days"])
+    worksheet.append(["Remote work", 3])
+    path = tmp_path / "policies.xlsx"
+    workbook.save(path)
+    pages = extract_document_pages(path.name, path.read_bytes())
+    assert pages[0].page_number == 1
+    assert "Remote work 3" in pages[0].text

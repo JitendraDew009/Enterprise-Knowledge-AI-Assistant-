@@ -75,8 +75,8 @@ def main() -> None:
 
         st.subheader("Upload documents")
         uploaded_files = st.file_uploader(
-            "Choose TXT, Markdown, or PDF files",
-            type=["txt", "md", "pdf"],
+            "Choose TXT, Markdown, PDF, DOCX, or XLSX files",
+            type=["txt", "md", "pdf", "docx", "xlsx"],
             accept_multiple_files=True,
             label_visibility="collapsed",
         )

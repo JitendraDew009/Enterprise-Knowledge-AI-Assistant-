@@ -2,17 +2,26 @@ import re
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
+from zipfile import BadZipFile
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
-ALLOWED_EXTENSIONS = {".txt", ".md", ".pdf"}
+ALLOWED_EXTENSIONS = {".txt", ".md", ".pdf", ".docx", ".xlsx"}
 ALLOWED_CONTENT_TYPES = {
     ".txt": {"text/plain", "application/octet-stream"},
     ".md": {"text/markdown", "text/plain", "application/octet-stream"},
     ".pdf": {"application/pdf", "application/octet-stream"},
+    ".docx": {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/octet-stream",
+    },
+    ".xlsx": {
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/octet-stream",
+    },
 }
 
 
@@ -61,8 +70,22 @@ def extract_document_pages(filename: str, content: bytes) -> list[DocumentPage]:
                 DocumentPage(index, clean_text(page.extract_text() or ""))
                 for index, page in enumerate(reader.pages, start=1)
             ]
-    except (PdfReadError, UnicodeDecodeError, ValueError) as error:
-        raise ValueError("The document could not be read. Upload a valid text or PDF file.") from error
+        elif suffix == ".docx":
+            from docx import Document as WordDocument
+
+            document = WordDocument(BytesIO(content))
+            pages = [DocumentPage(1, clean_text("\n".join(paragraph.text for paragraph in document.paragraphs)))]
+        elif suffix == ".xlsx":
+            from openpyxl import load_workbook
+
+            workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
+            pages = []
+            for index, worksheet in enumerate(workbook.worksheets, start=1):
+                rows = ("\t".join("" if value is None else str(value) for value in row) for row in worksheet.iter_rows(values_only=True))
+                pages.append(DocumentPage(index, clean_text("\n".join(rows))))
+            workbook.close()
+    except (BadZipFile, PdfReadError, UnicodeDecodeError, ValueError) as error:
+        raise ValueError("The document could not be read. Upload a valid supported document.") from error
     pages = [page for page in pages if page.text]
     if not pages:
         raise ValueError("The document contains no extractable text.")

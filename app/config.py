@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     api_base_url: str = "http://127.0.0.1:8000"
     application_api_key: str | None = None
     cors_origins: str = "http://127.0.0.1:8000,http://localhost:8501"
+    vector_backend: str = "chroma"
     openai_api_key: str | None = None
     openai_chat_model: str = "gpt-4o-mini"
     openai_embedding_model: str = "text-embedding-3-small"

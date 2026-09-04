@@ -8,7 +8,7 @@ def test_text_documents_are_decoded() -> None:
 
 def test_unsupported_documents_are_rejected() -> None:
     try:
-        read_supported_document("policy.docx", b"content")
+        read_supported_document("policy.pptx", b"content")
     except ValueError as error:
         assert "Unsupported file type" in str(error)
     else:
@@ -54,3 +54,16 @@ def test_local_answers_include_relevant_text(tmp_path) -> None:
     answer, sources = knowledge_base.answer("What skills do AI engineer roles require?")
     assert "AI engineer roles require Python and FastAPI." in answer
     assert sources[0].source == "roadmap.md"
+
+
+def test_reupload_replaces_previous_document_chunks(tmp_path) -> None:
+    knowledge_base = KnowledgeBase(
+        Settings(
+            chroma_persist_directory=str(tmp_path / "chroma"), chunk_size=100, openai_api_key=""
+        )
+    )
+    knowledge_base.add_document("policy.md", "The old policy is obsolete.")
+    knowledge_base.add_document("policy.md", "The new policy is effective immediately.")
+    documents = knowledge_base.list_documents()
+    assert documents == [type(documents[0])(filename="policy.md", chunks=1)]
+    assert "new policy" in knowledge_base.retrieve("new policy", limit=1)[0].excerpt

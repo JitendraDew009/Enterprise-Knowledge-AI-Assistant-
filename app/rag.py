@@ -61,6 +61,7 @@ class KnowledgeBase:
         chunks = chunk_document(filename, pages, self.splitter)
         if not chunks:
             return 0
+        self.delete_document(filename)
         self.store.add_documents(chunks)
         return len(chunks)
 

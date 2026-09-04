@@ -22,7 +22,7 @@ The assistant is designed to avoid inventing an answer when the uploaded documen
 
 ## Product Highlights
 
-- Upload `.txt`, `.md`, and `.pdf` documents from the browser.
+- Upload `.txt`, `.md`, `.pdf`, `.docx`, and `.xlsx` documents from the browser.
 - Split source material into configurable retrieval chunks.
 - Persist vectors locally with Chroma for repeatable development.
 - Use OpenAI embeddings and chat generation when an API key is configured.
@@ -58,8 +58,8 @@ flowchart LR
 | --- | --- |
 | Backend | Python, FastAPI, Uvicorn |
 | RAG orchestration | LangChain |
-| Local vector store | Chroma |
-| Production vector schema | PostgreSQL + pgvector repository and Alembic migration |
+| Local vector store | Chroma (default) |
+| Production vector store | PostgreSQL + pgvector (`VECTOR_BACKEND=pgvector`) |
 | Production embeddings and generation | OpenAI-compatible models |
 | Offline development mode | Deterministic local embeddings and extractive fallback |
 | Document processing | `pypdf`, LangChain text splitters |
@@ -172,6 +172,7 @@ Environment variables are loaded from `.env`:
 | `LLM_MAX_RETRIES` | `1` | Maximum provider retries |
 | `CONVERSATION_HISTORY_LIMIT` | `10` | Recent messages included in chat context |
 | `API_BASE_URL` | `http://127.0.0.1:8000` | FastAPI URL used by Streamlit |
+| `VECTOR_BACKEND` | `chroma` | Select `chroma` or `pgvector` |
 | `RETRIEVAL_K` | `4` | Number of chunks retrieved per question |
 | `CHUNK_SIZE` | `900` | Maximum chunk size |
 | `CHUNK_OVERLAP` | `150` | Overlap between neighboring chunks |
@@ -183,6 +184,7 @@ Environment variables are loaded from `.env`:
 - **Inspectable answers:** every response includes source excerpts and retrieval scores instead of hiding the retrieval step.
 - **Small service boundary:** FastAPI keeps ingestion, retrieval, and UI integration easy to test and extend.
 - **Persistent local state:** Chroma preserves the local knowledge base between application restarts.
+- **Deployment path:** set `VECTOR_BACKEND=pgvector` to use the PostgreSQL repository and the migrated vector column.
 - **Defense in depth:** optional API-key checks, safe filenames, upload limits, CORS controls, request IDs, and generic internal-error responses reduce common operational risks.
 
 ## Project Structure
@@ -250,9 +252,8 @@ The current identity header is an extension point for OAuth/JWT integration, not
 
 This repository is a focused, production-shaped MVP. The next steps for a larger enterprise deployment would be:
 
-- Connect the pgvector repository to the active ingestion and retrieval path.
 - Add document versioning and replace-on-reupload behavior.
-- Add richer file formats and background indexing jobs.
+- Add richer file formats such as PPTX/CSV/HTML and background indexing jobs.
 - Complete OAuth/JWT authentication, tenant isolation, and role-based authorization.
 - Add managed object storage, metrics, tracing, rate limits, and automated evaluation runs.
 

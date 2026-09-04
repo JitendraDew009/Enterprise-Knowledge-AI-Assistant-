@@ -15,6 +15,7 @@ from .core.logging import RequestLoggingMiddleware, configure_logging
 from .core.security import require_user
 from .db.session import check_database, get_db
 from .ingestion import extract_document_pages, validate_upload
+from .pg_rag import PgKnowledgeBase
 from .rag import DocumentSummary, KnowledgeBase
 from .schemas.chat import ChatRequest, ChatResponse
 from .services.chat import ConversationNotFoundError, ConversationService
@@ -39,7 +40,10 @@ async def unhandled_exception(request: Request, error: Exception) -> JSONRespons
 
 @lru_cache
 def get_knowledge_base() -> KnowledgeBase:
-    return KnowledgeBase(get_settings())
+    settings = get_settings()
+    if settings.vector_backend.lower() == "pgvector":
+        return PgKnowledgeBase(settings)
+    return KnowledgeBase(settings)
 
 
 class QueryRequest(BaseModel):

@@ -27,3 +27,8 @@ def test_configured_api_key_rejects_invalid_credentials(monkeypatch) -> None:
     with pytest.raises(HTTPException) as error:
         security.require_user(user_id="user-1", api_key="wrong")
     assert error.value.status_code == 401
+
+
+def test_vector_backend_is_configurable(monkeypatch) -> None:
+    monkeypatch.setenv("VECTOR_BACKEND", "pgvector")
+    assert Settings().vector_backend == "pgvector"
