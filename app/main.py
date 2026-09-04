@@ -1,11 +1,13 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from .config import get_settings
-from .rag import KnowledgeBase, read_supported_document
+from .rag import DocumentSummary, KnowledgeBase, read_supported_document
 
 app = FastAPI(title="Enterprise Knowledge AI Assistant", version="0.1.0")
 
@@ -30,6 +32,16 @@ class QueryResponse(BaseModel):
     sources: list[SourceResponse]
 
 
+class DocumentResponse(BaseModel):
+    filename: str
+    chunks: int
+
+
+@app.get("/", include_in_schema=False)
+def frontend() -> FileResponse:
+    return FileResponse(Path(__file__).parent.parent / "frontend" / "index.html")
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -45,6 +57,17 @@ async def upload_document(file: Annotated[UploadFile, File()]) -> dict[str, int 
     except (UnicodeDecodeError, ValueError) as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     return {"filename": file.filename, "chunks_indexed": chunks}
+
+
+@app.get("/documents", response_model=list[DocumentResponse])
+def list_documents() -> list[DocumentSummary]:
+    return get_knowledge_base().list_documents()
+
+
+@app.delete("/documents/{filename:path}", status_code=204)
+def delete_document(filename: str) -> None:
+    if not get_knowledge_base().delete_document(filename):
+        raise HTTPException(status_code=404, detail="Document not found.")
 
 
 @app.post("/query", response_model=QueryResponse)

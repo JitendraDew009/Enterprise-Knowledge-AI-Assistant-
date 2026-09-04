@@ -1,9 +1,9 @@
+import hashlib
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 
 from langchain_chroma import Chroma
-from langchain_community.embeddings import FakeEmbeddings
 from langchain_core.embeddings import Embeddings
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -17,6 +17,33 @@ class RetrievedSource:
     source: str
     excerpt: str
     score: float | None
+
+
+@dataclass
+class DocumentSummary:
+    filename: str
+    chunks: int
+
+
+class DeterministicEmbeddings(Embeddings):
+    def __init__(self, size: int = 384) -> None:
+        self.size = size
+
+    def _embed(self, text: str) -> list[float]:
+        vector = [0.0] * self.size
+        for token in text.lower().split():
+            digest = hashlib.blake2b(token.encode("utf-8"), digest_size=8).digest()
+            index = int.from_bytes(digest[:4], "big") % self.size
+            sign = 1.0 if digest[4] & 1 else -1.0
+            vector[index] += sign
+        magnitude = sum(value * value for value in vector) ** 0.5
+        return [value / magnitude for value in vector] if magnitude else vector
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [self._embed(text) for text in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._embed(text)
 
 
 class KnowledgeBase:
@@ -40,7 +67,7 @@ class KnowledgeBase:
                 api_key=self.settings.openai_api_key,
                 model=self.settings.openai_embedding_model,
             )
-        return FakeEmbeddings(size=384)
+        return DeterministicEmbeddings()
 
     def add_document(self, filename: str, content: str) -> int:
         chunks = self.splitter.create_documents(
@@ -50,6 +77,24 @@ class KnowledgeBase:
             return 0
         self.store.add_documents(chunks)
         return len(chunks)
+
+    def list_documents(self) -> list[DocumentSummary]:
+        metadata = self.store.get(include=["metadatas"]).get("metadatas", [])
+        counts: dict[str, int] = {}
+        for item in metadata:
+            source = str((item or {}).get("source", "unknown"))
+            counts[source] = counts.get(source, 0) + 1
+        return [
+            DocumentSummary(filename=filename, chunks=counts[filename])
+            for filename in sorted(counts)
+        ]
+
+    def delete_document(self, filename: str) -> bool:
+        documents = self.store.get(where={"source": filename}, include=["metadatas"])
+        if not documents.get("ids"):
+            return False
+        self.store.delete(where={"source": filename})
+        return True
 
     def retrieve(self, question: str, limit: int | None = None) -> list[RetrievedSource]:
         matches = self.store.similarity_search_with_score(

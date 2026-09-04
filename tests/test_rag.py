@@ -1,5 +1,5 @@
 from app.config import Settings
-from app.rag import KnowledgeBase, read_supported_document
+from app.rag import DeterministicEmbeddings, KnowledgeBase, read_supported_document
 
 
 def test_text_documents_are_decoded() -> None:
@@ -13,6 +13,11 @@ def test_unsupported_documents_are_rejected() -> None:
         assert "Unsupported file type" in str(error)
     else:
         raise AssertionError("Expected unsupported file type error")
+
+
+def test_local_embeddings_are_deterministic() -> None:
+    embeddings = DeterministicEmbeddings()
+    assert embeddings.embed_query("Remote work policy") == embeddings.embed_query("Remote work policy")
 
 
 def test_documents_can_be_indexed_and_retrieved(tmp_path) -> None:

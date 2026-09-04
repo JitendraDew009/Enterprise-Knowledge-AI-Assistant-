@@ -20,7 +20,8 @@ Copy-Item .env.example .env
 uvicorn app.main:app --reload
 ```
 
-Open `http://127.0.0.1:8000/docs` for the interactive API documentation.
+Open `http://127.0.0.1:8000/` for the browser assistant or
+`http://127.0.0.1:8000/docs` for the interactive API documentation.
 
 Set `OPENAI_API_KEY` in `.env` to enable LLM-generated answers. Without it, the API still retrieves context and returns a deterministic answer assembled from the most relevant passages.
 
@@ -38,6 +39,13 @@ curl.exe -X POST http://127.0.0.1:8000/documents -F "file=@handbook.md"
 curl.exe -X POST http://127.0.0.1:8000/query `
   -H "Content-Type: application/json" `
   -d '{"question":"What is our remote work policy?"}'
+```
+
+### List and remove documents
+
+```powershell
+curl.exe http://127.0.0.1:8000/documents
+curl.exe -X DELETE http://127.0.0.1:8000/documents/handbook.md
 ```
 
 Responses include the answer, retrieved source excerpts, and retrieval scores for evaluation.

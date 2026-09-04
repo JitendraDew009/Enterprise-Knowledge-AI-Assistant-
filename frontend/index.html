@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Knowledge Desk</title>
+  <style>
+    :root { --ink: #17211f; --muted: #66736f; --paper: #f5f2e9; --panel: #fffdf7; --line: #d9ddd5; --accent: #d65f3a; --accent-dark: #9f3e27; --sage: #dce8d9; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: radial-gradient(circle at 80% 0%, #e8efe0 0, transparent 34%), var(--paper); font: 16px/1.5 Georgia, serif; }
+    button, input { font: inherit; }
+    .shell { width: min(1180px, calc(100% - 40px)); margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: end; padding: 42px 0 34px; border-bottom: 1px solid var(--line); }
+    .eyebrow { margin: 0 0 8px; color: var(--accent-dark); font: 700 12px/1.2 Arial, sans-serif; letter-spacing: 1.6px; text-transform: uppercase; }
+    h1, h2, p { margin-top: 0; } h1 { max-width: 650px; margin-bottom: 0; font-size: clamp(2.4rem, 6vw, 5.4rem); line-height: .95; font-weight: 400; letter-spacing: 0; }
+    .signal { color: var(--muted); font: 14px Arial, sans-serif; }
+    main { display: grid; grid-template-columns: 300px 1fr; gap: 64px; padding: 44px 0 70px; }
+    aside { border-right: 1px solid var(--line); padding-right: 28px; } h2 { font-size: 1.35rem; font-weight: 400; }
+    .upload { display: block; padding: 16px; border: 1px dashed #a9b5aa; background: var(--sage); cursor: pointer; font: 700 14px Arial, sans-serif; }
+    .upload input { display: none; }
+    .status { min-height: 22px; margin: 12px 0 24px; color: var(--muted); font: 13px Arial, sans-serif; }
+    .documents { display: grid; gap: 10px; padding: 0; list-style: none; }
+    .document { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); font: 14px Arial, sans-serif; }
+    .document span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .document small { color: var(--muted); white-space: nowrap; }
+    .delete { border: 0; padding: 2px 5px; color: var(--accent-dark); background: transparent; cursor: pointer; }
+    .hero-copy { max-width: 760px; margin-bottom: 35px; } .hero-copy p { max-width: 580px; color: var(--muted); font-size: 1.15rem; }
+    .ask { display: flex; gap: 12px; margin-bottom: 34px; } .ask input { flex: 1; min-width: 0; padding: 17px 18px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); outline: none; } .ask input:focus { border-color: var(--accent); }
+    .ask button { padding: 0 25px; border: 0; color: white; background: var(--accent); cursor: pointer; font: 700 14px Arial, sans-serif; } .ask button:hover { background: var(--accent-dark); } button:disabled { opacity: .55; cursor: wait; }
+    .answer { display: none; padding: 27px 30px; border-left: 4px solid var(--accent); background: var(--panel); } .answer.visible { display: block; } .answer h2 { margin-bottom: 12px; }
+    .answer-text { white-space: pre-wrap; font-size: 1.08rem; }
+    .sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 24px; } .source { padding: 14px; background: #edf1e9; font: 13px/1.4 Arial, sans-serif; } .source strong { display: block; margin-bottom: 6px; color: var(--accent-dark); }
+    @media (max-width: 760px) { .shell { width: min(100% - 28px, 620px); } header { align-items: start; flex-direction: column; gap: 18px; } main { display: block; padding-top: 28px; } aside { border-right: 0; border-bottom: 1px solid var(--line); padding: 0 0 28px; margin-bottom: 35px; } .ask { flex-direction: column; } .ask button { min-height: 52px; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header><div><p class="eyebrow">Internal knowledge desk</p><h1>Ask the documents.</h1></div><div class="signal">Grounded answers · local retrieval</div></header>
+    <main>
+      <aside>
+        <h2>Document shelf</h2>
+        <label class="upload">+ Add documents<input id="file-input" type="file" accept=".txt,.md,.pdf" multiple></label>
+        <div id="status" class="status" role="status"></div>
+        <ul id="documents" class="documents"></ul>
+      </aside>
+      <section>
+        <div class="hero-copy"><p class="eyebrow">Search your workspace</p><p>Ask a question in plain language. Each response is assembled from the most relevant passages in your uploaded files.</p></div>
+        <form id="ask-form" class="ask"><input id="question" required minlength="3" maxlength="2000" placeholder="What do I need to know?" autocomplete="off"><button id="ask-button" type="submit">Ask assistant</button></form>
+        <article id="answer" class="answer"><h2>Answer</h2><div id="answer-text" class="answer-text"></div><div id="sources" class="sources"></div></article>
+      </section>
+    </main>
+  </div>
+  <script>
+    const status = document.querySelector('#status');
+    const documents = document.querySelector('#documents');
+    const answer = document.querySelector('#answer');
+    const answerText = document.querySelector('#answer-text');
+    const sources = document.querySelector('#sources');
+    const setStatus = (message, error = false) => { status.textContent = message; status.style.color = error ? 'var(--accent-dark)' : ''; };
+    async function loadDocuments() {
+      const response = await fetch('/documents');
+      if (!response.ok) throw new Error('Could not load documents.');
+      const items = await response.json();
+      documents.replaceChildren(...items.map(item => {
+        const row = document.createElement('li'); row.className = 'document';
+        const name = document.createElement('span'); name.textContent = item.filename;
+        const count = document.createElement('small'); count.textContent = `${item.chunks} chunk${item.chunks === 1 ? '' : 's'}`;
+        const remove = document.createElement('button'); remove.className = 'delete'; remove.title = `Delete ${item.filename}`; remove.textContent = '×'; remove.onclick = () => removeDocument(item.filename);
+        row.append(name, count, remove); return row;
+      }));
+    }
+    async function removeDocument(filename) {
+      const response = await fetch(`/documents/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+      if (!response.ok) { setStatus('Could not delete that document.', true); return; }
+      setStatus('Document removed.'); await loadDocuments();
+    }
+    document.querySelector('#file-input').onchange = async event => {
+      for (const file of event.target.files) {
+        const body = new FormData(); body.append('file', file); setStatus(`Indexing ${file.name}...`);
+        const response = await fetch('/documents', { method: 'POST', body });
+        if (!response.ok) { const detail = await response.json(); setStatus(detail.detail || 'Upload failed.', true); continue; }
+      }
+      event.target.value = ''; await loadDocuments(); setStatus('Documents are ready.');
+    };
+    document.querySelector('#ask-form').onsubmit = async event => {
+      event.preventDefault(); const button = document.querySelector('#ask-button'); button.disabled = true; button.textContent = 'Thinking...'; answer.classList.remove('visible');
+      try {
+        const response = await fetch('/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: document.querySelector('#question').value }) });
+        const data = await response.json(); if (!response.ok) throw new Error(data.detail || 'Question failed.');
+        answerText.textContent = data.answer; sources.replaceChildren(...data.sources.map(source => { const card = document.createElement('div'); card.className = 'source'; card.innerHTML = `<strong></strong><span></span>`; card.querySelector('strong').textContent = `${source.source} · ${source.score ?? 'n/a'}`; card.querySelector('span').textContent = source.excerpt; return card; })); answer.classList.add('visible');
+      } catch (error) { setStatus(error.message, true); } finally { button.disabled = false; button.textContent = 'Ask assistant'; }
+    };
+    loadDocuments().catch(error => setStatus(error.message, true));
+  </script>
+</body>
+</html>
